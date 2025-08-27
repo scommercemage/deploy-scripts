@@ -24,11 +24,6 @@ jobs:
   connect_ssh:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.inputs.branch }}
-
       - name: Setup SSH connection
         uses: appleboy/ssh-action@master
         with:
@@ -51,7 +46,7 @@ jobs:
             cd ${{ github.event.inputs.staging_directory }}
             PHP_SCRIPT=$(cat << 'EOF'
             <?php
-            $config = require '${{ github.workspace }}/app/etc/env.php';
+            $config = require '${{ github.event.inputs.staging_directory }}/app/etc/env.php';
             $dbConfig = $config['db']['connection']['default'];
             echo "DB_NAME=" . $dbConfig['dbname'] . "\n";
             echo "DB_USER=" . $dbConfig['username'] . "\n";
