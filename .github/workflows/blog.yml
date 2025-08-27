@@ -6,6 +6,9 @@ on:
       branch:
         required: true
         type: string
+      directory:
+        required: true
+        type: string
     secrets:
       SERVER_HOST:
         required: true
@@ -33,7 +36,7 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            cd ${{ vars.DIR }}
+            cd ${{ github.event.inputs.directory }}
 
   enable_maintenance:
     runs-on: ubuntu-latest
@@ -47,7 +50,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Blog maintenance activate"
-            cd ${{ vars.DIR }}
+            cd ${{ github.event.inputs.directory }}
             wp maintenance-mode activate
 
   git_checkout:
@@ -62,7 +65,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Resetting repository state"
-            cd ${{ vars.DIR }}
+            cd ${{ github.event.inputs.directory }}
             echo "git fetch"
             git fetch origin
             echo "git reset"
@@ -84,6 +87,6 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Blog maintenance deactivate"
-            cd ${{ vars.DIR }}
+            cd ${{ github.event.inputs.directory }}
             wp maintenance-mode deactivate
 
