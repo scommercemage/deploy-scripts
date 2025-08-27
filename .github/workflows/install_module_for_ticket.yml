@@ -99,7 +99,8 @@ jobs:
           script: |
             echo "Installing module: ${{ github.event.inputs.module }}:dev-${{ github.event.inputs.ticket }}"
             cd ${{ vars.DIR }}
-            composer require "${{ github.event.inputs.module }}:dev-${{ github.event.inputs.ticket }}"
+            composer config minimum-stability dev
+            composer require "${{ github.event.inputs.module }}:dev-${{ github.event.inputs.ticket }}" -W
 
   create_and_merge_branch:
     runs-on: ubuntu-latest
