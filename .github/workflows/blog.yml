@@ -1,4 +1,4 @@
-name: Deploy Repository
+name: Deploy Blog
 
 on:
   workflow_call:
