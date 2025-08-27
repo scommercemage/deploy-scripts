@@ -43,20 +43,7 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            cd ${{ github.event.inputs.staging_directory }}
-            PHP_SCRIPT=$(cat << 'EOF'
-            <?php
-            $config = require '${{ github.event.inputs.staging_directory }}/app/etc/env.php';
-            $dbConfig = $config['db']['connection']['default'];
-            echo "DB_NAME=" . $dbConfig['dbname'] . "\n";
-            echo "DB_USER=" . $dbConfig['username'] . "\n";
-            echo "DB_PASS=" . $dbConfig['password'] . "\n";
-            ?>
-            EOF
-            )
-            
-            # Execute PHP script and set outputs
-            php -r "$PHP_SCRIPT" >> $GITHUB_OUTPUT
+            eval $(php -r "\$c=require 'app/etc/env.php';\$d=\$c['db']['connection']['default'];foreach(['dbname','username','password'] as \$k){echo 'export DB_'.strtoupper(\$k).'='.trim(\$d[\$k]).\"\n\";}")
             
   staging_magento_dump:
     runs-on: ubuntu-latest
