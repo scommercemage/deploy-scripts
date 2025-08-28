@@ -164,7 +164,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Enable maintenance"
-            cd ${{ vars.DIR }}
+            cd ${{ github.event.inputs.staging_directory }}
             php -d memory_limit=3096M bin/magento maintenance:enable
 
   magento_upgrade:
@@ -179,8 +179,8 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Run bin/magento setup:upgrade"
-            cd ${{ vars.DIR }}
-            php -d memory_limit=3096M bin/magento maintenance:enable
+            cd ${{ github.event.inputs.staging_directory }}
+            php -d memory_limit=3096M bin/magento setup:upgrade
 
   di_and_static_compile:
     runs-on: ubuntu-latest
@@ -194,7 +194,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Run bin/magento setup:di:compile and setup:static-content:deploy"
-            cd ${{ vars.DIR }}
+            cd ${{ github.event.inputs.staging_directory }}
             rm -rf generated/*
             php -d memory_limit=3096M bin/magento setup:di:compile
             rm -rf pub/static/*
@@ -212,5 +212,5 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Disable maintenance mode"
-            cd ${{ vars.DIR }}
+            cd ${{ github.event.inputs.staging_directory }}
             php -d memory_limit=3096M bin/magento maintenance:disable
