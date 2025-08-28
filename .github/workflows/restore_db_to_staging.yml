@@ -32,8 +32,13 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             cd ${{ github.event.inputs.live_directory }}
+
   parse_db_conn_staging:
     runs-on: ubuntu-latest
+    outputs:
+      db_name: ${{ steps.extract-creds.outputs.db_name }}
+      db_user: ${{ steps.extract-creds.outputs.db_user }}
+      db_pass: ${{ steps.extract-creds.outputs.db_pass }}
     needs: connect_ssh
     steps:
       - name: Parse DB Connection
@@ -43,7 +48,8 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            eval $(php -r "\$c=require 'app/etc/env.php';\$d=\$c['db']['connection']['default'];foreach(['dbname','username','password'] as \$k){echo 'export DB_'.strtoupper(\$k).'='.trim(\$d[\$k]).\"\n\";}")
+            cd ${{ github.event.inputs.staging_directory }}
+            php -r "\$c=require 'app/etc/env.php'; \$d=\$c['db']['connection']['default']; echo 'db_name='.\$d['dbname'].\"\n\"; echo 'db_user='.\$d['username'].\"\n\"; echo 'db_pass='.\$d['password'].\"\n\";"
             
   staging_magento_dump:
     runs-on: ubuntu-latest
@@ -57,4 +63,6 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-              echo "${{ steps.extract-creds.outputs.DB_NAME }} ${{ steps.extract-creds.outputs.DB_USER }} ${{ steps.extract-creds.outputs.DB_PASS }}"
+            echo "DB Name: ${{ needs.parse_db_conn_staging.outputs.db_name }}"
+            echo "DB User: ${{ needs.parse_db_conn_staging.outputs.db_user }}"
+            echo "DB Pass: ${{ needs.parse_db_conn_staging.outputs.db_pass }}"
