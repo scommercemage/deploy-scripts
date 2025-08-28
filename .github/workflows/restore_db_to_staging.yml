@@ -56,7 +56,7 @@ jobs:
           script: |
             cd ${{ github.event.inputs.live_directory }}
             eval $(php -r "\$c=require 'app/etc/env.php';\$d=\$c['db']['connection']['default'];foreach(['dbname','username','password'] as \$k){echo 'export LIVE_DB_'.strtoupper(\$k).'='.trim(\$d[\$k]).\"\n\";}")
-      
+
       - name: Create Current Staging Dump
         uses: appleboy/ssh-action@master
         with:
@@ -64,4 +64,7 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            set | grep DB_
+            echo $STAGING_DB_DBNAME
+            echo $LIVE_DB_DBNAME
+            echo $STAGING_DB_PASS
+            echo $LIVE_DB_PASS
