@@ -49,7 +49,16 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             cd ${{ github.event.inputs.staging_directory }}
-            php -r "\$c=require 'app/etc/env.php'; \$d=\$c['db']['connection']['default']; echo 'db_name='.\$d['dbname'].\"\n\"; echo 'db_user='.\$d['username'].\"\n\"; echo 'db_pass='.\$d['password'].\"\n\";"
+            php -r "\$c=require 'app/etc/env.php'; 
+                     \$d=\$c['db']['connection']['default'];
+                     \$envContent = 'DB_NAME='.\$d['dbname'].\"\n\".
+                                   'DB_USER='.\$d['username'].\"\n\".
+                                   'DB_PASS='.\$d['password'].\"\n\";
+                     file_put_contents('/tmp/db_config.env', \$envContent);"
+            
+            echo "=== env file ==="
+            cat /tmp/db_config.env
+            echo "======================================"
             
   staging_magento_dump:
     runs-on: ubuntu-latest
@@ -63,6 +72,9 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            echo "DB Name: ${{ needs.parse_db_conn_staging.outputs.db_name }}"
-            echo "DB User: ${{ needs.parse_db_conn_staging.outputs.db_user }}"
-            echo "DB Pass: ${{ needs.parse_db_conn_staging.outputs.db_pass }}"
+            set -a
+            source /tmp/db_config.env
+            set +a
+            echo "Database: $DB_NAME"
+            echo "User: $DB_USER"
+            echo "Pass: $DB_PASS"
