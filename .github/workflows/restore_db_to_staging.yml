@@ -50,11 +50,11 @@ jobs:
                      \$envContent = 'STAGING_DB_NAME='.\$d['dbname'].\"\n\".
                                    'STAGING_DB_USER='.\$d['username'].\"\n\".
                                    'STAGING_aDB_PASS='.\$d['password'].\"\n\";
-                     file_put_contents('tmp/db_config.env', \$envContent);"
+                     file_put_contents('/tmp/staging_db_config.env', \$envContent);"
 
   parse_db_conn_live:
     runs-on: ubuntu-latest
-    needs: connect_ssh
+    needs: parse_db_conn_staging
     steps:
       - name: Parse DB Connection
         uses: appleboy/ssh-action@master
@@ -69,11 +69,11 @@ jobs:
                      \$envContent = 'LIVE_DB_NAME='.\$d['dbname'].\"\n\".
                                    'LIVE_DB_USER='.\$d['username'].\"\n\".
                                    'LIVE_DB_PASS='.\$d['password'].\"\n\";
-                     file_put_contents('tmp/db_config.env', \$envContent);"
+                     file_put_contents('/tmp/live_db_config.env', \$envContent);"
 
   staging_magento_dump:
     runs-on: ubuntu-latest
-    needs: parse_db_conn_staging
+    needs: parse_db_conn_live
 
     steps:
       - name: Create Staging DB dump
@@ -84,8 +84,8 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             set -a
-            source ${{ github.event.inputs.staging_directory }}/tmp/db_config.env
-            source ${{ github.event.inputs.live_directory }}/tmp/db_config.env
+            source /tmp/live_db_config.env
+            source /tmp/staging_db_config.env
             set +a
             echo "Database: $STAGING_DB_NAME"
             echo "Database: $LIVE_DB_NAME"
