@@ -73,5 +73,5 @@ jobs:
             source /tmp/staging_db_config.env
             set +a
             cd ${{ github.event.inputs.staging_directory }}
-            mysqldump -u${STAGING_DB_USER} -p${STAGING_DB_PASS} STAGING_DB_NAME > currentLiveDBDump.sql
+            mysqldump -u${STAGING_DB_USER} -p${STAGING_DB_PASS} ${STAGING_DB_NAME} > currentLiveDBDump.sql
             cat currentLiveDBDump.sql | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > currentLiveDBDumpWithoutDefiner.sql
