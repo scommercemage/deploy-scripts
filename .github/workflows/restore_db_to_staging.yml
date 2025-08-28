@@ -33,15 +33,11 @@ jobs:
           script: |
             cd ${{ github.event.inputs.live_directory }}
 
-  parse_db_conn_staging:
+  restore_db_from_live_to_staging:
     runs-on: ubuntu-latest
-    outputs:
-      db_name: ${{ steps.extract-creds.outputs.db_name }}
-      db_user: ${{ steps.extract-creds.outputs.db_user }}
-      db_pass: ${{ steps.extract-creds.outputs.db_pass }}
     needs: connect_ssh
     steps:
-      - name: Parse DB Connection
+      - name: Parse Staging DB Connection
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -49,32 +45,22 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             cd ${{ github.event.inputs.staging_directory }}
-            php -r "\$c=require 'app/etc/env.php'; 
-                     \$d=\$c['db']['connection']['default'];
-                     \$envContent = 'DB_NAME='.\$d['dbname'].\"\n\".
-                                   'DB_USER='.\$d['username'].\"\n\".
-                                   'DB_PASS='.\$d['password'].\"\n\";
-                     file_put_contents('/tmp/db_config.env', \$envContent);"
-            
-            echo "=== env file ==="
-            cat /tmp/db_config.env
-            echo "======================================"
-            
-  staging_magento_dump:
-    runs-on: ubuntu-latest
-    needs: parse_db_conn_staging
+            eval $(php -r "\$c=require 'app/etc/env.php';\$d=\$c['db']['connection']['default'];foreach(['dbname','username','password'] as \$k){echo 'export STAGING_DB_'.strtoupper(\$k).'='.trim(\$d[\$k]).\"\n\";}")
 
-    steps:
-      - name: Create Staging DB dump
+      - name: Parse Live DB Connection
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            set -a
-            source /tmp/db_config.env
-            set +a
-            echo "Database: $DB_NAME"
-            echo "User: $DB_USER"
-            echo "Pass: $DB_PASS"
+            cd ${{ github.event.inputs.live_directory }}
+            eval $(php -r "\$c=require 'app/etc/env.php';\$d=\$c['db']['connection']['default'];foreach(['dbname','username','password'] as \$k){echo 'export LIVE_DB_'.strtoupper(\$k).'='.trim(\$d[\$k]).\"\n\";}")
+      - name: Create Current Staging Dump
+        uses: appleboy/ssh-action
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+        script: |
+          set | grep DB_
