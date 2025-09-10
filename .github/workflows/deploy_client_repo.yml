@@ -120,7 +120,7 @@ jobs:
             rm -rf generated/*
             php -d memory_limit=3096M bin/magento setup:di:compile
             rm -rf pub/static/*
-            php -d memory_limit=3096M bin/magento setup:static-content:deploy -f en_GB en_US
+            php -d memory_limit=3096M bin/magento setup:static-content:deploy -f
   
   
 
