@@ -6,6 +6,10 @@ on:
       branch:
         required: true
         type: string
+      use_composer1:
+        required: false
+        type: boolean
+        default: false
     secrets:
       SERVER_HOST:
         required: true
