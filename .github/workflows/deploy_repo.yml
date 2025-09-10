@@ -8,8 +8,8 @@ on:
         type: string
       use_composer1:
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: 'false'
     secrets:
       SERVER_HOST:
         required: true
@@ -89,7 +89,11 @@ jobs:
           script: |
             echo "Run Composer install"
             cd ${{ vars.DIR }}
-            composer install
+            if [ "${{ github.event.inputs.use_composer1 }}" = "true" ]; then
+              composer1 install
+            else
+              composer install
+            fi
 
   magento_upgrade:
     runs-on: ubuntu-latest
