@@ -113,9 +113,9 @@ jobs:
             echo "Installing module: ${{ github.event.inputs.module }}:${{ github.event.inputs.version }}"
             cd ${{ vars.DIR }}
             if [ "${{ github.event.inputs.use_composer1 }}" = "true" ]; then
-              composer1 require "${{ github.event.inputs.module }}:${{ github.event.inputs.version }}"
+              composer1 require "${{ github.event.inputs.module }}:${{ github.event.inputs.version }}" --update-with-all-dependencies
             else
-              composer require "${{ github.event.inputs.module }}:${{ github.event.inputs.version }}"
+              composer require "${{ github.event.inputs.module }}:${{ github.event.inputs.version }}" --update-with-all-dependencies
             fi
 
   create_and_merge_branch:
