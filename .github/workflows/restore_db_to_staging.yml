@@ -16,8 +16,6 @@ on:
         required: true
       SERVER_PASSWORD:
         required: true
-      DIR:
-        required: true
 
 
 jobs:
