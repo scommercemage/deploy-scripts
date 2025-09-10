@@ -92,7 +92,11 @@ jobs:
           script: |
             echo "Run Composer install"
             cd ${{ vars.DIR }}
-            composer install
+            if [ "${{ github.event.inputs.use_composer1 }}" = "true" ]; then
+              composer1 install
+            else
+              composer install
+            fi
 
   install_module:
     runs-on: ubuntu-latest
@@ -108,7 +112,11 @@ jobs:
             echo "Installing module: ${{ github.event.inputs.module }}:dev-${{ github.event.inputs.ticket }}"
             cd ${{ vars.DIR }}
             composer config minimum-stability dev
-            composer require "${{ github.event.inputs.module }}:dev-${{ github.event.inputs.ticket }}" -W
+            if [ "${{ github.event.inputs.use_composer1 }}" = "true" ]; then
+              composer1 require "${{ github.event.inputs.module }}:${{ github.event.inputs.version }}" --update-with-all-dependencies
+            else
+              composer require "${{ github.event.inputs.module }}:${{ github.event.inputs.version }}" --update-with-all-dependencies
+            fi
 
   create_and_merge_branch:
     runs-on: ubuntu-latest
