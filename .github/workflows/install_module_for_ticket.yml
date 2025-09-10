@@ -9,6 +9,14 @@ on:
       ticket:
         required: true
         type: string
+      branch:
+        required: true
+        type: string
+        default: 'master'
+      use_composer1:
+        required: false
+        type: boolean
+        default: false
     secrets:
       SERVER_HOST:
         required: true
