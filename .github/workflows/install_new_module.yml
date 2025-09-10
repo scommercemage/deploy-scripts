@@ -143,13 +143,13 @@ jobs:
             git commit -m "Install module ${{ github.event.inputs.module }}:${{ github.event.inputs.version }}"
             
             # Switch back to main branch
-            git checkout main
+            git checkout ${{ github.event.inputs.branch }}
             
             # Merge the feature branch into main
             git merge --no-ff "$BRANCH_NAME" -m "Merge $BRANCH_NAME: Install module ${{ github.event.inputs.module }}:${{ github.event.inputs.version }}"
             
             # Push main to origin
-            git push origin main
+            git push origin ${{ github.event.inputs.branch }}
             
             # Delete the feature branch locally and remotely
             git branch -d "$BRANCH_NAME"
@@ -172,8 +172,8 @@ jobs:
             
             # Reset composer changes and go back to main
             git checkout -- composer.json composer.lock
-            git checkout main
-            git pull origin main
+            git checkout ${{ github.event.inputs.branch }}
+            git pull origin ${{ github.event.inputs.branch }}
             
             # Reinstall original dependencies
             composer install
