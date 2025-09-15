@@ -108,7 +108,7 @@ jobs:
           script: |
             echo "Run bin/magento setup:upgrade"
             cd ${{ vars.DIR }}
-            php -d memory_limit=3096M bin/magento maintenance:enable
+            php -d memory_limit=3096M bin/magento setup:upgrade
 
   di_and_static_compile:
     runs-on: ubuntu-latest
