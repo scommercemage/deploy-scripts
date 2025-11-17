@@ -6,6 +6,14 @@ on:
       module:
         required: true
         type: string
+      branch:
+        required: true
+        type: string
+        default: 'master'
+      use_composer1:
+        required: false
+        type: string
+        default: 'false'
     secrets:
       SERVER_HOST:
         required: true
@@ -80,8 +88,13 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             echo "Run Composer install"
+            echo "${{ github.event.inputs.use_composer1 }}"
             cd ${{ vars.DIR }}
-            composer install
+            if [ "${{ github.event.inputs.use_composer1 }}" = "true" ]; then
+              composer1 install
+            else
+              composer install
+            fi
 
   remove_module:
     runs-on: ubuntu-latest
@@ -96,7 +109,11 @@ jobs:
           script: |
             echo "Removing module: ${{ github.event.inputs.module }}"
             cd ${{ vars.DIR }}
-            composer remove ${{ github.event.inputs.module }}
+            if [ "${{ github.event.inputs.use_composer1 }}" = "true" ]; then
+              composer1 remove ${{ github.event.inputs.module }}
+            else
+              composer remove ${{ github.event.inputs.module }}
+            fi
 
   create_and_merge_branch:
     runs-on: ubuntu-latest
