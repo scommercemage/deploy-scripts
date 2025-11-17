@@ -1,0 +1,242 @@
+name: Remove module
+
+on:
+  workflow_call:
+    inputs:
+      module:
+        required: true
+        type: string
+    secrets:
+      SERVER_HOST:
+        required: true
+      SERVER_USERNAME:
+        required: true
+      SERVER_PASSWORD:
+        required: true
+      DIR:
+        required: true
+
+
+jobs:
+  connect_ssh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Setup SSH connection
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd ${{ vars.DIR }}
+
+  git_checkout:
+    runs-on: ubuntu-latest
+    needs: connect_ssh
+    steps:
+      - name: Git checkout
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Resetting repository state"
+            cd ${{ vars.DIR }}
+            git fetch origin
+            git reset --hard
+            git checkout -f ${{ github.event.inputs.branch }}
+            git pull origin ${{ github.event.inputs.branch }}
+
+  enable_maintenance:
+    runs-on: ubuntu-latest
+    needs: git_checkout
+    steps:
+      - name: Enable Maintenance Mode
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Enabling maintenance mode"
+            cd ${{ vars.DIR }}
+            php -d memory_limit=3096M bin/magento maintenance:enable
+
+  composer_install:
+    runs-on: ubuntu-latest
+    needs: enable_maintenance
+    steps:
+      - name: Composer Install
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Run Composer install"
+            cd ${{ vars.DIR }}
+            composer install
+
+  remove_module:
+    runs-on: ubuntu-latest
+    needs: composer_install
+    steps:
+      - name: Remove Module with Composer
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Removing module: ${{ github.event.inputs.module }}"
+            cd ${{ vars.DIR }}
+            composer remove ${{ github.event.inputs.module }}
+
+  create_and_merge_branch:
+    runs-on: ubuntu-latest
+    needs: remove_module
+    if: success()
+    steps:
+      - name: Create Feature Branch, Merge to Main and Push
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd ${{ vars.DIR }}
+            
+            # Create branch name from module and version
+            BRANCH_NAME="module-remove/${{ github.event.inputs.module }}"
+            
+            # Create and switch to new branch
+            git checkout -b "$BRANCH_NAME"
+            
+            # Commit composer changes
+            git add composer.json composer.lock
+            git commit -m "Remove module ${{ github.event.inputs.module }}"
+            
+            # Switch back to main branch
+            git checkout main
+            
+            # Merge the feature branch into main
+            git merge --no-ff "$BRANCH_NAME" -m "Merge $BRANCH_NAME: Remove module ${{ github.event.inputs.module }}"
+            
+            # Push main to origin
+            git push origin main
+            
+            # Delete the feature branch locally and remotely
+            git branch -d "$BRANCH_NAME"
+            git push origin --delete "$BRANCH_NAME" || echo "Remote branch $BRANCH_NAME doesn't exist or already deleted"
+
+  reset_on_failure:
+    runs-on: ubuntu-latest
+    needs: remove_module
+    if: failure()
+    steps:
+      - name: Reset to Main Branch
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Resetting to main branch after failed removing"
+            cd ${{ vars.DIR }}
+            
+            # Reset composer changes and go back to main
+            git checkout -- composer.json composer.lock
+            git checkout main
+            git pull origin main
+            
+            # Reinstall original dependencies
+            composer install
+            echo "Reset to main branch completed"
+
+  magento_upgrade:
+    runs-on: ubuntu-latest
+    needs:
+      - create_and_merge_branch
+      - reset_on_failure
+    if: |
+      always() && (needs.create_and_merge_branch.result == 'success' || needs.reset_on_failure.result == 'success')
+    steps:
+      - name: Run bin/magento setup:upgrade
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Run bin/magento setup:upgrade"
+            cd ${{ vars.DIR }}
+            php -d memory_limit=3096M bin/magento setup:upgrade
+
+  di_and_static_compile:
+    runs-on: ubuntu-latest
+    needs: magento_upgrade
+    if: always()
+    steps:
+      - name: Run bin/magento setup:di:compile and setup:static-content:deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Run bin/magento setup:di:compile and setup:static-content:deploy"
+            cd ${{ vars.DIR }}
+            rm -rf generated/*
+            php -d memory_limit=3096M bin/magento setup:di:compile
+            rm -rf pub/static/*
+            php -d memory_limit=3096M bin/magento setup:static-content:deploy -f en_GB en_US
+
+  disable_maintenance:
+    runs-on: ubuntu-latest
+    needs: di_and_static_compile
+    if: always()
+    steps:
+      - name: Disable Maintenance
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            echo "Disable maintenance mode"
+            cd ${{ vars.DIR }}
+            php -d memory_limit=3096M bin/magento maintenance:disable
+
+  notify_success:
+    runs-on: ubuntu-latest
+    needs: 
+      - disable_maintenance
+      - create_and_merge_branch
+    if: always() && needs.create_and_merge_branch.result == 'success'
+    steps:
+      - name: Notify Success
+        run: |
+          echo "Module removed successfully and merged to main!"
+          echo "Module: ${{ github.event.inputs.module }}"
+          echo "Version: ${{ github.event.inputs.version }}"
+          echo "Changes have been pushed to main branch on GitHub"
+
+  notify_failure:
+    runs-on: ubuntu-latest
+    needs: 
+       - disable_maintenance
+       - reset_on_failure
+    if: always() && needs.reset_on_failure.result == 'success'
+    steps:
+      - name: Notify Failure
+        run: |
+          echo "Module removing failed, but deployment completed"
+          echo "Module: ${{ github.event.inputs.module }}"
+          echo "Version: ${{ github.event.inputs.version }}"
+          echo "System was reset to main branch and deployment commands ran"
