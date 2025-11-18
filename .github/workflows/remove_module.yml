@@ -146,7 +146,7 @@ jobs:
             git merge --no-ff "$BRANCH_NAME" -m "Merge $BRANCH_NAME: Remove module ${{ github.event.inputs.module }}"
             
             # Push main to origin
-            git push origin main
+            git push origin ${{ github.event.inputs.branch }}
             
             # Delete the feature branch locally and remotely
             git branch -d "$BRANCH_NAME"
