@@ -140,7 +140,7 @@ jobs:
             git commit -m "Remove module ${{ github.event.inputs.module }}"
             
             # Switch back to main branch
-            git checkout main
+            git checkout ${{ github.event.inputs.branch }}
             
             # Merge the feature branch into main
             git merge --no-ff "$BRANCH_NAME" -m "Merge $BRANCH_NAME: Remove module ${{ github.event.inputs.module }}"
