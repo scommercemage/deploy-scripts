@@ -1,0 +1,121 @@
+name: Restore Custom Blog DB from backup to staging
+
+on:
+  workflow_call:
+    inputs:
+      db_backup_path:
+        required: true
+        type: string
+      live_directory:
+        required: true
+        type: string
+      staging_directory:
+        required: true
+        type: string
+      blog_theme_name:
+        required: true
+        type: string
+    secrets:
+      SERVER_HOST:
+        required: true
+      SERVER_USERNAME:
+        required: true
+      SERVER_PASSWORD:
+        required: true
+      DIR:
+        required: false
+
+jobs:
+  parse_db_conn_staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse DB Connection Staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd ${{ inputs.staging_directory }}
+            php -r "\$c=require 'wp-config.php'; 
+                    \$envContent = 'STAGING_BLOG_DB_NAME='. DB_NAME .\"\n\".
+                                   'STAGING_BLOG_DB_USER='.DB_USER.\"\n\".
+                                   'STAGING_BLOG_DB_PASS='.DB_PASSWORD.\"\n\";
+                    file_put_contents('/tmp/staging_blog_db_config.env', \$envContent);"
+
+  create_staging_blog_db_dump:
+    runs-on: ubuntu-latest
+    needs: parse_db_conn_staging
+    steps:
+      - name: Create staging blog db dump
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            set -a
+            source /tmp/staging_blog_db_config.env
+            set +a
+            cd ${{ inputs.staging_directory }}
+            mysqldump -u${STAGING_BLOG_DB_USER} -p${STAGING_BLOG_DB_PASS} ${STAGING_BLOG_DB_NAME} > stagingBlogDBDump.sql
+            cat stagingBlogDBDump.sql | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > stagingBlogDBDumpWithoutDefiner_"`date +"%d-%m-%Y"`".sql
+            rm stagingBlogDBDump.sql
+            find -name "staging*.sql" -type f -mtime +14 -delete
+
+  restore_custom_blog_db_backup_to_staging:
+    runs-on: ubuntu-latest
+    needs: create_staging_blog_db_dump
+    steps:
+      - name: Restore Custom Blog DB Backup To Staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            set -a
+            source /tmp/staging_blog_db_config.env
+            set +a
+            
+            BACKUP_PATH="${{ inputs.db_backup_path }}"
+            
+            echo "Processing custom blog backup file: $BACKUP_PATH"
+            if [[ $BACKUP_PATH == *.gz ]]; then
+              zcat "$BACKUP_PATH" | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > /tmp/clean_blog_restore_dump.sql
+            else
+              cat "$BACKUP_PATH" | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > /tmp/clean_blog_restore_dump.sql
+            fi
+            
+            echo "Importing into Staging Blog DB..."
+            mysql -u${STAGING_BLOG_DB_USER} -p${STAGING_BLOG_DB_PASS} ${STAGING_BLOG_DB_NAME} < /tmp/clean_blog_restore_dump.sql
+            rm /tmp/clean_blog_restore_dump.sql
+
+  copy_media_from_live_to_staging:
+    runs-on: ubuntu-latest
+    needs: restore_custom_blog_db_backup_to_staging
+    steps:
+      - name: Copy Blogs Media From Live To Staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cp -r ${{ inputs.live_directory }}/wp-content/uploads/* ${{ inputs.staging_directory }}/wp-content/uploads/ 
+            cp -r ${{ inputs.live_directory }}/wp-content/themes/${{ inputs.blog_theme_name }}/assets/img/* ${{ inputs.staging_directory }}/wp-content/themes/${{ inputs.blog_theme_name }}/assets/img/
+
+  change_blog_db_variables:
+    runs-on: ubuntu-latest
+    needs: copy_media_from_live_to_staging
+    steps:
+      - name: Update URLs in Staging Blog DB
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            cd ${{ inputs.staging_directory }}
+            cd ../..
+            php db-blog-updater.php
