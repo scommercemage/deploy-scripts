@@ -12,7 +12,7 @@ on:
       staging_directory:
         required: true
         type: string
-      blog_theme_name:
+      blog_images_path:
         required: true
         type: string
     secrets:
@@ -38,10 +38,10 @@ jobs:
           script: |
             cd ${{ inputs.staging_directory }}
             php -r "\$c=require 'wp-config.php'; 
-                    \$envContent = 'STAGING_BLOG_DB_NAME='. DB_NAME .\"\n\".
+                     \$envContent = 'STAGING_BLOG_DB_NAME='. DB_NAME .\"\n\".
                                    'STAGING_BLOG_DB_USER='.DB_USER.\"\n\".
                                    'STAGING_BLOG_DB_PASS='.DB_PASSWORD.\"\n\";
-                    file_put_contents('/tmp/staging_blog_db_config.env', \$envContent);"
+                     file_put_contents('/tmp/staging_blog_db_config.env', \$envContent);"
 
   create_staging_blog_db_dump:
     runs-on: ubuntu-latest
@@ -102,8 +102,10 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
+            # Copy Uploads
             cp -r ${{ inputs.live_directory }}/wp-content/uploads/* ${{ inputs.staging_directory }}/wp-content/uploads/ 
-            cp -r ${{ inputs.live_directory }}/wp-content/themes/${{ inputs.blog_theme_name }}/assets/img/* ${{ inputs.staging_directory }}/wp-content/themes/${{ inputs.blog_theme_name }}/assets/img/
+            # Copy Custom Images Path (relative to WP root, e.g., wp-content/themes/ckb/assets/img/)
+            cp -r ${{ inputs.live_directory }}/${{ inputs.blog_images_path }}* ${{ inputs.staging_directory }}/${{ inputs.blog_images_path }}
 
   change_blog_db_variables:
     runs-on: ubuntu-latest

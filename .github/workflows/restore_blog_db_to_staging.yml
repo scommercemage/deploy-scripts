@@ -9,7 +9,7 @@ on:
       staging_directory:
         required: true
         type: string
-      blog_theme_name:
+      blog_images_path:
         required: true
         type: string
     secrets:
@@ -33,7 +33,7 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            cd ${{ github.event.inputs.staging_directory }}
+            cd ${{ inputs.staging_directory }}
             php -r "\$c=require 'wp-config.php'; 
                      \$envContent = 'STAGING_BLOG_DB_NAME='. DB_NAME .\"\n\".
                                    'STAGING_BLOG_DB_USER='.DB_USER.\"\n\".
@@ -50,7 +50,7 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            cd ${{ github.event.inputs.live_directory }}
+            cd ${{ inputs.live_directory }}
             php -r "\$c=require 'wp-config.php'; 
                      \$envContent = 'LIVE_BLOG_DB_NAME='. DB_NAME .\"\n\".
                                    'LIVE_BLOG_DB_USER='.DB_USER.\"\n\".
@@ -59,9 +59,7 @@ jobs:
 
   create_staging_blog_db_dump:
     runs-on: ubuntu-latest
-    needs:
-      - parse_db_conn_live
-      - parse_db_conn_staging
+    needs: [parse_db_conn_live, parse_db_conn_staging]
     steps:
       - name: Create staging blog db dump
         uses: appleboy/ssh-action@master
@@ -73,7 +71,7 @@ jobs:
             set -a
             source /tmp/staging_blog_db_config.env
             set +a
-            cd ${{ github.event.inputs.staging_directory }}
+            cd ${{ inputs.staging_directory }}
             mysqldump -u${STAGING_BLOG_DB_USER} -p${STAGING_BLOG_DB_PASS} ${STAGING_BLOG_DB_NAME} > stagingBlogDBDump.sql
             cat stagingBlogDBDump.sql | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > stagingBlogDBDumpWithoutDefiner_"`date +"%d-%m-%Y"`".sql
             rm stagingBlogDBDump.sql
@@ -81,9 +79,7 @@ jobs:
 
   create_live_blog_db_dump:
     runs-on: ubuntu-latest
-    needs:
-      - parse_db_conn_live
-      - parse_db_conn_staging
+    needs: [parse_db_conn_live, parse_db_conn_staging]
     steps:
       - name: Create live blog db dump
         uses: appleboy/ssh-action@master
@@ -95,15 +91,13 @@ jobs:
             set -a
             source /tmp/live_blog_db_config.env
             set +a
-            cd ${{ github.event.inputs.staging_directory }}
+            cd ${{ inputs.staging_directory }}
             mysqldump -u${LIVE_BLOG_DB_USER} -p${LIVE_BLOG_DB_PASS} ${LIVE_BLOG_DB_NAME} > currentLiveBlogDBDump.sql
             cat currentLiveBlogDBDump.sql | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > currentLiveBlogDBDumpWithoutDefiner.sql
 
   restore_live_db_backup_to_staging:
     runs-on: ubuntu-latest
-    needs:
-      - create_live_blog_db_dump
-      - create_staging_blog_db_dump
+    needs: [create_live_blog_db_dump, create_staging_blog_db_dump]
     steps:
       - name: Restore Live DB Backup To Staging
         uses: appleboy/ssh-action@master
@@ -113,9 +107,9 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             set -a
-            source /tmp/staging_db_config.env
+            source /tmp/staging_blog_db_config.env
             set +a
-            cd ${{ github.event.inputs.staging_directory }}
+            cd ${{ inputs.staging_directory }}
             mysql -u${STAGING_BLOG_DB_USER} -p${STAGING_BLOG_DB_PASS} ${STAGING_BLOG_DB_NAME} < currentLiveBlogDBDumpWithoutDefiner.sql
             rm currentLiveBlogDBDumpWithoutDefiner.sql
 
@@ -130,20 +124,22 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            cp -r ${{ github.event.inputs.live_directory }}/wp-content/uploads/* ${{ github.event.inputs.staging_directory }}/wp-content/uploads/ 
-            cp -r ${{ github.event.inputs.live_directory }}/wp-content/themes/${{ github.event.inputs.blog_theme_name }}/assets/img/* ${{ github.event.inputs.staging_directory }}/wp-content/themes/${{ github.event.inputs.blog_theme_name }}/assets/img/
+            # Copy Uploads
+            cp -r ${{ inputs.live_directory }}/wp-content/uploads/* ${{ inputs.staging_directory }}/wp-content/uploads/ 
+            # Copy Custom Images Path (relative to WP root)
+            cp -r ${{ inputs.live_directory }}/${{ inputs.blog_images_path }}* ${{ inputs.staging_directory }}/${{ inputs.blog_images_path }}
 
   change_blog_db_variables:
     runs-on: ubuntu-latest
     needs: copy_media_from_live_to_staging
     steps:
-      - name: Copy Blogs Media From Live To Staging
+      - name: Run DB Updater Script
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            cd ${{ github.event.inputs.staging_directory }}
+            cd ${{ inputs.staging_directory }}
             cd ../..
             php db-blog-updater.php
