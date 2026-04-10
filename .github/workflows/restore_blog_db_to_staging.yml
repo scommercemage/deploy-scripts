@@ -23,112 +23,73 @@ on:
         required: true
 
 jobs:
-  dump_staging_blog:
+  dump_staging_and_live:
+    name: Backup Staging and Dump Live
     runs-on: ubuntu-latest
     steps:
-      - name: Parse and Dump Staging DB
+      - name: SSH and Prepare Dumps
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
+            # --- 1. BACKUP STAGING DB ---
             cd ${{ inputs.staging_directory }}
             
-            # Extract variables safely without eval (silencing PHP warnings)
-            DB_NAME=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_NAME;")
-            DB_USER=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_USER;")
-            DB_PASS=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_PASSWORD;")
+            # Find wp-config.php (checks current and parent)
+            if [ -f "wp-config.php" ]; then WPC="wp-config.php"; elif [ -f "../wp-config.php" ]; then WPC="../wp-config.php"; else echo "wp-config not found"; exit 1; fi
             
-            # Failsafe: Check if extraction worked
-            if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ]; then
-              echo "Error: Could not extract staging credentials from wp-config.php in $(pwd)"
-              exit 1
-            fi
+            # Extract Staging Credentials
+            S_NAME=$(php -r "error_reporting(0); require '$WPC'; echo DB_NAME;")
+            S_USER=$(php -r "error_reporting(0); require '$WPC'; echo DB_USER;")
+            S_PASS=$(php -r "error_reporting(0); require '$WPC'; echo DB_PASSWORD;")
             
-            echo "Dumping Staging DB: $DB_NAME"
-            mysqldump -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" > stagingBlogDBDump.sql
-            
-            cat stagingBlogDBDump.sql | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > stagingBlogDBDumpWithoutDefiner_"`date +"%d-%m-%Y"`".sql
-            rm stagingBlogDBDump.sql
-            find -name "staging*.sql" -type f -mtime +14 -delete
+            echo "Backing up Staging DB: $S_NAME"
+            mysqldump -u"$S_USER" -p"$S_PASS" "$S_NAME" | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > staging_backup_$(date +%F).sql
+            find -name "staging_backup_*.sql" -type f -mtime +14 -delete
 
-  dump_live_blog:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Parse and Dump Live DB
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          script: |
+            # --- 2. DUMP LIVE DB ---
             cd ${{ inputs.live_directory }}
+            if [ -f "wp-config.php" ]; then WPC="wp-config.php"; elif [ -f "../wp-config.php" ]; then WPC="../wp-config.php"; else echo "wp-config not found"; exit 1; fi
             
-            # Extract live variables safely
-            DB_NAME=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_NAME;")
-            DB_USER=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_USER;")
-            DB_PASS=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_PASSWORD;")
+            # Extract Live Credentials
+            L_NAME=$(php -r "error_reporting(0); require '$WPC'; echo DB_NAME;")
+            L_USER=$(php -r "error_reporting(0); require '$WPC'; echo DB_USER;")
+            L_PASS=$(php -r "error_reporting(0); require '$WPC'; echo DB_PASSWORD;")
             
-            # Failsafe: Check if extraction worked
-            if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ]; then
-              echo "Error: Could not extract live credentials from wp-config.php in $(pwd)"
-              exit 1
-            fi
-            
-            echo "Dumping Live DB: $DB_NAME"
-            mysqldump -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" > ${{ inputs.staging_directory }}/currentLiveBlogDBDump.sql
-            
+            echo "Dumping Live DB: $L_NAME"
+            mysqldump -u"$L_USER" -p"$L_PASS" "$L_NAME" | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > ${{ inputs.staging_directory }}/currentLiveBlogDBDump.sql
+
+  restore_and_sync:
+    name: Import Data and Sync Media
+    runs-on: ubuntu-latest
+    needs: dump_staging_and_live
+    steps:
+      - name: SSH and Finalise Restore
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
             cd ${{ inputs.staging_directory }}
-            cat currentLiveBlogDBDump.sql | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > currentLiveBlogDBDumpWithoutDefiner.sql
+            
+            # Extract Staging Credentials for Import
+            if [ -f "wp-config.php" ]; then WPC="wp-config.php"; else WPC="../wp-config.php"; fi
+            S_NAME=$(php -r "error_reporting(0); require '$WPC'; echo DB_NAME;")
+            S_USER=$(php -r "error_reporting(0); require '$WPC'; echo DB_USER;")
+            S_PASS=$(php -r "error_reporting(0); require '$WPC'; echo DB_PASSWORD;")
+            
+            echo "Importing Live Data into Staging..."
+            mysql -u"$S_USER" -p"$S_PASS" "$S_NAME" < currentLiveBlogDBDump.sql
             rm currentLiveBlogDBDump.sql
-
-  restore_live_db_backup_to_staging:
-    runs-on: ubuntu-latest
-    needs: [dump_staging_blog, dump_live_blog]
-    steps:
-      - name: Restore Live DB Backup To Staging
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          script: |
-            cd ${{ inputs.staging_directory }}
             
-            # Parse staging credentials again to import the new data
-            DB_NAME=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_NAME;")
-            DB_USER=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_USER;")
-            DB_PASS=$(php -r "error_reporting(0); require 'wp-config.php'; echo DB_PASSWORD;")
-            
-            if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ]; then
-              echo "Error: Could not extract staging credentials for restore."
-              exit 1
-            fi
-            
-            echo "Restoring into Staging DB: $DB_NAME"
-            mysql -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" < currentLiveBlogDBDumpWithoutDefiner.sql
-            rm currentLiveBlogDBDumpWithoutDefiner.sql
-
-  copy_media_and_update:
-    runs-on: ubuntu-latest
-    needs: restore_live_db_backup_to_staging
-    steps:
-      - name: Sync Media and Update DB
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          script: |
-            echo "Syncing media from live..."
-            # Copy Uploads
+            echo "Syncing Media..."
             cp -r ${{ inputs.live_directory }}/wp-content/uploads/* ${{ inputs.staging_directory }}/wp-content/uploads/ 
-            # Copy Custom Images Path
             cp -r ${{ inputs.live_directory }}/${{ inputs.blog_images_path }}* ${{ inputs.staging_directory }}/${{ inputs.blog_images_path }}
-
-            echo "Running updater script..."
-            cd ${{ inputs.staging_directory }}
+            
+            echo "Running Updater..."
             cd ..
             if [ -f db-blog-updater.php ]; then
               php db-blog-updater.php
