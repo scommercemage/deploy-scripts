@@ -119,5 +119,5 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             cd ${{ inputs.staging_directory }}
-            cd ../..
+            cd ..
             php db-blog-updater.php
