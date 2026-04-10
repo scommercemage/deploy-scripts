@@ -35,29 +35,32 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
             # --- 1. BACKUP STAGING DB ---
-            cd ${{ inputs.staging_directory }}
+            cd ${{ inputs.staging_directory }} || exit 1
             
-            # Find wp-config.php (checks current and parent)
+            # Find wp-config.php
             if [ -f "wp-config.php" ]; then WPC="wp-config.php"; elif [ -f "../wp-config.php" ]; then WPC="../wp-config.php"; else echo "wp-config not found"; exit 1; fi
             
-            # Extract Staging Credentials
-            S_NAME=$(php -r "error_reporting(0); require '$WPC'; echo DB_NAME;")
-            S_USER=$(php -r "error_reporting(0); require '$WPC'; echo DB_USER;")
-            S_PASS=$(php -r "error_reporting(0); require '$WPC'; echo DB_PASSWORD;")
+            # Extract Credentials using grep/awk (much more reliable than php require)
+            S_NAME=$(grep "DB_NAME" $WPC | awk -F "['\"]" '{print $4}')
+            S_USER=$(grep "DB_USER" $WPC | awk -F "['\"]" '{print $4}')
+            S_PASS=$(grep "DB_PASSWORD" $WPC | awk -F "['\"]" '{print $4}')
             
+            if [ -z "$S_NAME" ] || [ -z "$S_USER" ]; then echo "Staging credentials extraction failed"; exit 1; fi
+
             echo "Backing up Staging DB: $S_NAME"
             mysqldump -u"$S_USER" -p"$S_PASS" "$S_NAME" | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > staging_backup_$(date +%F).sql
             find -name "staging_backup_*.sql" -type f -mtime +14 -delete
 
             # --- 2. DUMP LIVE DB ---
-            cd ${{ inputs.live_directory }}
+            cd ${{ inputs.live_directory }} || exit 1
             if [ -f "wp-config.php" ]; then WPC="wp-config.php"; elif [ -f "../wp-config.php" ]; then WPC="../wp-config.php"; else echo "wp-config not found"; exit 1; fi
             
-            # Extract Live Credentials
-            L_NAME=$(php -r "error_reporting(0); require '$WPC'; echo DB_NAME;")
-            L_USER=$(php -r "error_reporting(0); require '$WPC'; echo DB_USER;")
-            L_PASS=$(php -r "error_reporting(0); require '$WPC'; echo DB_PASSWORD;")
+            L_NAME=$(grep "DB_NAME" $WPC | awk -F "['\"]" '{print $4}')
+            L_USER=$(grep "DB_USER" $WPC | awk -F "['\"]" '{print $4}')
+            L_PASS=$(grep "DB_PASSWORD" $WPC | awk -F "['\"]" '{print $4}')
             
+            if [ -z "$L_NAME" ] || [ -z "$L_USER" ]; then echo "Live credentials extraction failed"; exit 1; fi
+
             echo "Dumping Live DB: $L_NAME"
             mysqldump -u"$L_USER" -p"$L_PASS" "$L_NAME" | sed -e 's/DEFINER[ ]*=[ ]*[^*]*\*/\*/' > ${{ inputs.staging_directory }}/currentLiveBlogDBDump.sql
 
@@ -73,15 +76,14 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            cd ${{ inputs.staging_directory }}
+            cd ${{ inputs.staging_directory }} || exit 1
             
-            # Extract Staging Credentials for Import
             if [ -f "wp-config.php" ]; then WPC="wp-config.php"; else WPC="../wp-config.php"; fi
-            S_NAME=$(php -r "error_reporting(0); require '$WPC'; echo DB_NAME;")
-            S_USER=$(php -r "error_reporting(0); require '$WPC'; echo DB_USER;")
-            S_PASS=$(php -r "error_reporting(0); require '$WPC'; echo DB_PASSWORD;")
+            S_NAME=$(grep "DB_NAME" $WPC | awk -F "['\"]" '{print $4}')
+            S_USER=$(grep "DB_USER" $WPC | awk -F "['\"]" '{print $4}')
+            S_PASS=$(grep "DB_PASSWORD" $WPC | awk -F "['\"]" '{print $4}')
             
-            echo "Importing Live Data into Staging..."
+            echo "Importing Live Data into Staging: $S_NAME"
             mysql -u"$S_USER" -p"$S_PASS" "$S_NAME" < currentLiveBlogDBDump.sql
             rm currentLiveBlogDBDump.sql
             
