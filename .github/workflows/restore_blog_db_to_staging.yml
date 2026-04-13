@@ -12,6 +12,10 @@ on:
       blog_images_path:
         required: true
         type: string
+      updater_depth:
+        required: false
+        type: string
+        default: 'single'   # 'single' = cd ..  |  'double' = cd ../../
     secrets:
       SERVER_HOST:
         required: true
@@ -92,7 +96,14 @@ jobs:
             cp -r ${{ inputs.live_directory }}/${{ inputs.blog_images_path }}* ${{ inputs.staging_directory }}/${{ inputs.blog_images_path }}
             
             echo "Running Updater..."
-            cd ..
+            case "${{ inputs.updater_depth }}" in
+              double)
+                cd ../../
+                ;;
+              single|*)
+                cd ..
+                ;;
+            esac
             if [ -f db-blog-updater.php ]; then
               php db-blog-updater.php
             else
